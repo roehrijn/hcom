@@ -352,6 +352,13 @@ mod host_label {
 
     impl Backend {
         fn resolve() -> Option<Self> {
+            // A headless/background agent has no herdr pane of its own; it only
+            // inherits the coordinator's HERDR_PANE_ID, so a pane.rename or
+            // pane.report_agent would target (and clobber) the coordinator's
+            // pane. Skip the herdr backend entirely for background launches.
+            if std::env::var("HCOM_BACKGROUND").is_ok_and(|v| !v.is_empty()) {
+                return None;
+            }
             if std::env::var("HERDR_ENV").ok().as_deref() == Some("1") {
                 let socket_path = std::env::var("HERDR_SOCKET_PATH")
                     .ok()
