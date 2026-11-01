@@ -2365,6 +2365,23 @@ fn parse_herdr_pane_id(captured: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// herdr's `tab create` places the new tab in the *focused* workspace when no
+/// target is given, so a spawned agent lands wherever the user happens to be
+/// looking rather than alongside its coordinator. Append `--workspace <ws>`
+/// (derived from the launcher's own `HERDR_PANE_ID`, formatted `<ws>:<pane>`)
+/// so the child pane is created in the coordinator's workspace. Mirrors the
+/// kitty `--match window_id` splice in `launch_terminal`.
+fn splice_herdr_workspace(argv: &mut Vec<String>, herdr_pane_id: Option<&str>) {
+    let Some((ws, _)) = herdr_pane_id.and_then(|p| p.split_once(':')) else {
+        return;
+    };
+    if ws.is_empty() || argv.iter().any(|a| a == "--workspace") {
+        return;
+    }
+    argv.push("--workspace".to_string());
+    argv.push(ws.to_string());
+}
+
 /// Launch a herdr pane in two steps: `tab create` (whose stdout JSON carries
 /// the new pane id) then `pane run <pane_id> "bash <script>"` to start hcom's
 /// normal runner inside it. Returns `(success, captured_stdout)` where the
@@ -2378,7 +2395,11 @@ fn launch_herdr_two_step(
     // Step 1: open the pane. `tab create` takes no script, so substitute
     // placeholders directly — the generic `substitute_open_argv` requires a
     // `{script}` slot this command intentionally lacks.
-    let create_argv = substitute_herdr_create_argv(create_template, &ctx);
+    let mut create_argv = substitute_herdr_create_argv(create_template, &ctx);
+    splice_herdr_workspace(
+        &mut create_argv,
+        std::env::var("HERDR_PANE_ID").ok().as_deref(),
+    );
     let (created, captured) = spawn_terminal_process(&create_argv, inside_ai_tool)?;
     let Some(pane_id) = parse_herdr_pane_id(captured.trim()) else {
         // Couldn't open/parse a pane. Either `tab create` failed outright (no
@@ -4274,6 +4295,47 @@ mod tests {
                 "luna",
             ]
         );
+    }
+
+    #[test]
+    fn test_splice_herdr_workspace_targets_launcher_workspace() {
+        let mut cmd = argv(&[
+            "herdr", "tab", "create", "--cwd", "/p", "--no-focus", "--label", "luna",
+        ]);
+        splice_herdr_workspace(&mut cmd, Some("wR:p1"));
+        assert_eq!(
+            cmd,
+            vec![
+                "herdr",
+                "tab",
+                "create",
+                "--cwd",
+                "/p",
+                "--no-focus",
+                "--label",
+                "luna",
+                "--workspace",
+                "wR",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_splice_herdr_workspace_noop_without_pane_id() {
+        let base = argv(&["herdr", "tab", "create", "--cwd", "/p"]);
+        for pane in [None, Some(""), Some("no-colon"), Some(":p1")] {
+            let mut cmd = base.clone();
+            splice_herdr_workspace(&mut cmd, pane);
+            assert_eq!(cmd, base, "pane {pane:?} must not alter argv");
+        }
+    }
+
+    #[test]
+    fn test_splice_herdr_workspace_respects_existing_target() {
+        let mut cmd = argv(&["herdr", "tab", "create", "--workspace", "wZ", "--cwd", "/p"]);
+        let before = cmd.clone();
+        splice_herdr_workspace(&mut cmd, Some("wR:p1"));
+        assert_eq!(cmd, before);
     }
 
     #[test]
