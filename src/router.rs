@@ -696,6 +696,7 @@ pub fn dispatch() -> anyhow::Result<()> {
     // Skip for `hcom update` itself — it handles its own output.
     let is_update_cmd = matches!(&action, Action::Command { cmd, .. } if cmd == "update");
     if !is_update_cmd
+        && std::env::var_os("HCOM_NO_UPDATE_CHECK").is_none()
         && matches!(
             action,
             Action::Command { .. }
