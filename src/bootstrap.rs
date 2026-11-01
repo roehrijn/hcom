@@ -75,7 +75,7 @@ You run hcom commands on behalf of the human user. The human uses natural langua
 const MESSAGES: &str = r#"## MESSAGES
 
 Sending rules:
-- Use --intent on sends: request (want reply), inform (dont need reply), ack (responding).
+- Use --intent on sends: request (want reply), inform (dont need reply), ack (answering a request; always requires --reply-to <id>). Never ack an inform.
 
 Response rules:
 - From {SENDER} or intent=request → always respond
@@ -281,7 +281,7 @@ Commands:
 
 Rules:
 - Authority: @{SENDER} > others
-- Use --intent on sends: request (want reply), inform (FYI), ack (responding)"#;
+- Use --intent on sends: request (want reply), inform (FYI), ack (answering a request; requires --reply-to). Never ack an inform."#;
 
 // HELPERS
 
