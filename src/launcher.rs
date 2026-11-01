@@ -1925,6 +1925,15 @@ pub fn launch(db: &HcomDb, mut params: LaunchParams) -> Result<LaunchResult> {
         default
     };
 
+    // Hard enforcement: refuse to launch untagged when HCOM_REQUIRE_TAG is set.
+    if effective_tag.is_empty()
+        && std::env::var("HCOM_REQUIRE_TAG").is_ok_and(|v| !v.is_empty())
+    {
+        bail!(
+            "HCOM_REQUIRE_TAG is set but no tag resolved for launch; set HCOM_TAG, pass --tag, or run `hcom config tag <name>`"
+        );
+    }
+
     // Explicit name validation
     if let Some(ref name) = params.name {
         if params.count > 1 {

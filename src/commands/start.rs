@@ -362,6 +362,26 @@ fn restore_child_links_after_root_rebind(
     })
 }
 
+/// Resolve the group tag for a `hcom start` join. HcomConfig::load already folds
+/// HCOM_TAG (precedence env > file > default) into `config.tag`, but the start
+/// path otherwise records the instance untagged. Read it here so joins carry the
+/// same tag as launches, and enforce HCOM_REQUIRE_TAG when set.
+fn resolve_start_tag() -> Result<Option<String>> {
+    let tag = crate::config::HcomConfig::load(None)
+        .tag
+        .trim()
+        .to_string();
+    if tag.is_empty() {
+        if std::env::var("HCOM_REQUIRE_TAG").is_ok_and(|v| !v.is_empty()) {
+            bail!(
+                "HCOM_REQUIRE_TAG is set but no tag resolved; set HCOM_TAG or run `hcom config tag <name>`"
+            );
+        }
+        return Ok(None);
+    }
+    Ok(Some(tag))
+}
+
 /// Rebind session identity (`--as <name>`), preserving last_event_id and any
 /// live Claude child hierarchy owned by the current root actor.
 fn start_rebind(
@@ -470,6 +490,7 @@ fn start_rebind(
 
     // Create fresh instance with the target name.
     let cwd_override = ctx.cwd.to_string_lossy().to_string();
+    let tag = resolve_start_tag()?;
     instance_binding::initialize_instance_in_position_file(
         db,
         &target_name,
@@ -480,7 +501,7 @@ fn start_rebind(
         None, // transcript_path
         Some(tool),
         false, // background
-        None,  // tag
+        tag.as_deref(), // tag
         None,  // wait_timeout
         None,  // subagent_timeout
         None,  // hints
@@ -783,6 +804,7 @@ fn start_bare(db: &HcomDb, ctx: &HcomContext, explicit_name: Option<&str>) -> Re
         return Ok(0);
     }
 
+    let tag = resolve_start_tag()?;
     instance_binding::initialize_instance_in_position_file(
         db,
         &name,
@@ -793,7 +815,7 @@ fn start_bare(db: &HcomDb, ctx: &HcomContext, explicit_name: Option<&str>) -> Re
         None, // transcript_path
         Some(tool),
         false, // background
-        None,  // tag
+        tag.as_deref(), // tag
         None,  // wait_timeout
         None,  // subagent_timeout
         None,  // hints
